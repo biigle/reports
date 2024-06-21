@@ -3,16 +3,17 @@
 namespace Biigle\Tests\Modules\Reports\Support\Reports\Volumes;
 
 use Biigle\LabelSource;
-use Biigle\Shape;
+use Biigle\Modules\MetadataIfdo\ImageIfdoParser;
 use Biigle\Modules\Reports\Support\Reports\Volumes\ImageIfdoReportGenerator;
-use Biigle\Modules\Reports\Volume;
+use Biigle\Modules\Reports\Volume as ReportVolume;
+use Biigle\Shape;
 use Biigle\Tests\ImageAnnotationLabelTest;
 use Biigle\Tests\ImageAnnotationTest;
 use Biigle\Tests\ImageLabelTest;
 use Biigle\Tests\ImageTest;
 use Biigle\Tests\LabelTest;
 use Biigle\Tests\UserTest;
-use Biigle\Tests\VolumeTest;
+use Biigle\Volume;
 use Exception;
 use Storage;
 use TestCase;
@@ -24,7 +25,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
         $generator = new ImageIfdoReportGenerator;
         $this->assertEquals('image iFDO report', $generator->getName());
         $this->assertEquals('image_ifdo_report', $generator->getFilename());
-        $this->assertStringEndsWith('.yaml', $generator->getFullFilename());
+        $this->assertStringEndsWith('.json', $generator->getFullFilename());
     }
 
     protected function setUpIfdo($merge = [])
@@ -34,14 +35,18 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
             ],
         ], $merge);
 
-        $volume = VolumeTest::create(['name' => 'My Cool Volume']);
+        $volume = Volume::factory()->create([
+            'name' => 'My Cool Volume',
+            'metadata_file_path' => 'mymeta.json',
+            'metadata_parser' => ImageIfdoParser::class,
+        ]);
 
-        $disk = Storage::fake('ifdos');
-        $disk->put($volume->id.'.yaml', yaml_emit($ifdo));
+        $disk = Storage::fake(Volume::$metadataFileDisk);
+        $disk->put('mymeta.json', json_encode($ifdo));
 
         return [$volume, $ifdo];
     }
@@ -74,7 +79,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -85,6 +90,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $al->label_id,
                         'name' => $al->label->name,
+                        'uuid' => $al->label->uuid,
+                        'color' => $al->label->color,
                     ],
                 ],
             ],
@@ -93,7 +100,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $al->annotation->points,
+                            'coordinates' => [$al->annotation->points],
                             'labels' => [
                                 [
                                     'label' => $al->label_id,
@@ -107,7 +114,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testGenerateReportMultiLabel()
@@ -145,7 +152,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -156,10 +163,14 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $al->label_id,
                         'name' => $al->label->name,
+                        'uuid' => $al->label->uuid,
+                        'color' => $al->label->color,
                     ],
                     [
                         'id' => $al2->label_id,
                         'name' => $al2->label->name,
+                        'uuid' => $al2->label->uuid,
+                        'color' => $al2->label->color,
                     ],
                 ],
             ],
@@ -168,7 +179,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $al->annotation->points,
+                            'coordinates' => [$al->annotation->points],
                             'labels' => [
                                 [
                                     'label' => $al->label_id,
@@ -187,7 +198,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testGenerateReportEmpty()
@@ -205,14 +216,14 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
             ],
             'image-set-items' => [
                 $image->filename => [],
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testGenerateReportImageLabels()
@@ -239,7 +250,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -250,6 +261,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $il->label_id,
                         'name' => $il->label->name,
+                        'uuid' => $il->label->uuid,
+                        'color' => $il->label->color,
                     ],
                 ],
             ],
@@ -272,7 +285,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testGenerateReportMergeImageSetItems()
@@ -303,7 +316,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'rectangle',
-                            'coordinates' => [10, 20, 20, 30, 30, 20, 20, 10],
+                            'coordinates' => [[10, 20, 20, 30, 30, 20, 20, 10]],
                             'labels' => [
                                 [
                                     'label' => 123321,
@@ -342,7 +355,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => '123abc',
@@ -361,6 +374,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $al->label_id,
                         'name' => $al->label->name,
+                        'uuid' => $al->label->uuid,
+                        'color' => $al->label->color,
                     ],
                 ],
             ],
@@ -370,7 +385,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'rectangle',
-                            'coordinates' => [10, 20, 20, 30, 30, 20, 20, 10],
+                            'coordinates' => [[10, 20, 20, 30, 30, 20, 20, 10]],
                             'labels' => [
                                 [
                                     'label' => 123321,
@@ -381,7 +396,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                         ],
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $al->annotation->points,
+                            'coordinates' => [$al->annotation->points],
                             'labels' => [
                                 [
                                     'label' => $al->label_id,
@@ -395,7 +410,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testGenerateReportMergeImageSetItemsArray()
@@ -439,7 +454,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -450,6 +465,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $al->label_id,
                         'name' => $al->label->name,
+                        'uuid' => $al->label->uuid,
+                        'color' => $al->label->color,
                     ],
                 ],
             ],
@@ -459,7 +476,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $al->annotation->points,
+                            'coordinates' => [$al->annotation->points],
                             'labels' => [
                                 [
                                     'label' => $al->label_id,
@@ -473,14 +490,14 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testGenerateReportRestrictToExportArea()
     {
         [$volume, $ifdo] = $this->setUpIfdo();
 
-        $volume = Volume::convert($volume);
+        $volume = ReportVolume::convert($volume);
         $volume->exportArea = [100, 100, 200, 200];
         $volume->save();
 
@@ -521,7 +538,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -532,6 +549,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $al1->label_id,
                         'name' => $al1->label->name,
+                        'uuid' => $al1->label->uuid,
+                        'color' => $al1->label->color,
                     ],
                 ],
             ],
@@ -540,7 +559,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $a1->points,
+                            'coordinates' => [$a1->points],
                             'labels' => [
                                 [
                                     'label' => $al1->label_id,
@@ -554,7 +573,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testGenerateReportRestrictNewestLabel()
@@ -594,7 +613,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -605,6 +624,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $al2->label_id,
                         'name' => $al2->label->name,
+                        'uuid' => $al2->label->uuid,
+                        'color' => $al2->label->color,
                     ],
                 ],
             ],
@@ -613,7 +634,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $al->annotation->points,
+                            'coordinates' => [$al->annotation->points],
                             'labels' => [
                                 [
                                     'label' => $al2->label_id,
@@ -627,7 +648,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testGenerateReportRestrictToLabels()
@@ -692,7 +713,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -703,6 +724,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $al->label_id,
                         'name' => $al->label->name,
+                        'uuid' => $al->label->uuid,
+                        'color' => $al->label->color,
                     ],
                 ],
             ],
@@ -711,7 +734,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $a1->points,
+                            'coordinates' => [$a1->points],
                             'labels' => [
                                 [
                                     'label' => $label->id,
@@ -737,12 +760,12 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testGenerateReportNoIfdo()
     {
-        $volume = VolumeTest::create();
+        $volume = Volume::factory()->create();
         $generator = new ImageIfdoReportGeneratorStub();
         $generator->setSource($volume);
         $this->expectException(Exception::class);
@@ -782,7 +805,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -793,6 +816,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => 'urn:lsid:marinespecies.org:taxname:123999',
                         'name' => $al->label->name,
+                        'uuid' => $al->label->uuid,
+                        'color' => $al->label->color,
                     ],
                 ],
             ],
@@ -801,7 +826,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $al->annotation->points,
+                            'coordinates' => [$al->annotation->points],
                             'labels' => [
                                 [
                                     'label' => 'urn:lsid:marinespecies.org:taxname:123999',
@@ -815,7 +840,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testStripIfdo()
@@ -845,7 +870,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => [10, 20],
+                            'coordinates' => [[10, 20]],
                             'labels' => [
                                 [
                                     'label' => 123321,
@@ -886,7 +911,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -897,6 +922,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $al->label_id,
                         'name' => $al->label->name,
+                        'uuid' => $al->label->uuid,
+                        'color' => $al->label->color,
                     ],
                 ],
             ],
@@ -905,7 +932,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $al->annotation->points,
+                            'coordinates' => [$al->annotation->points],
                             'labels' => [
                                 [
                                     'label' => $al->label_id,
@@ -919,7 +946,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testStripIfdoArray()
@@ -949,7 +976,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => [10, 20],
+                            'coordinates' => [[10, 20]],
                             'labels' => [
                                 [
                                     'label' => 123321,
@@ -990,7 +1017,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -1001,6 +1028,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $al->label_id,
                         'name' => $al->label->name,
+                        'uuid' => $al->label->uuid,
+                        'color' => $al->label->color,
                     ],
                 ],
             ],
@@ -1009,7 +1038,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $al->annotation->points,
+                            'coordinates' => [$al->annotation->points],
                             'labels' => [
                                 [
                                     'label' => $al->label_id,
@@ -1023,7 +1052,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 
     public function testGeometryTypes()
@@ -1105,7 +1134,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                 'image-set-handle' => '20.500.12085/test-example',
                 'image-set-name' => 'My Cool Volume',
                 'image-set-uuid' => 'd7546c4b-307f-4d42-8554-33236c577450',
-                'image-acquisition' => 'image',
+                'image-acquisition' => 'photo',
                 'image-annotation-creators' => [
                     [
                         'id' => $user->uuid,
@@ -1116,6 +1145,8 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     [
                         'id' => $label->id,
                         'name' => $label->name,
+                        'uuid' => $label->uuid,
+                        'color' => $label->color,
                     ],
                 ],
             ],
@@ -1124,7 +1155,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                     'image-annotations' => [
                         [
                             'shape' => 'single-pixel',
-                            'coordinates' => $a1->points,
+                            'coordinates' => [$a1->points],
                             'labels' => [
                                 [
                                     'label' => $label->id,
@@ -1135,7 +1166,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                         ],
                         [
                             'shape' => 'rectangle',
-                            'coordinates' => $a2->points,
+                            'coordinates' => [$a2->points],
                             'labels' => [
                                 [
                                     'label' => $label->id,
@@ -1146,7 +1177,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                         ],
                         [
                             'shape' => 'circle',
-                            'coordinates' => $a3->points,
+                            'coordinates' => [$a3->points],
                             'labels' => [
                                 [
                                     'label' => $label->id,
@@ -1157,7 +1188,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                         ],
                         [
                             'shape' => 'ellipse',
-                            'coordinates' => $a4->points,
+                            'coordinates' => [$a4->points],
                             'labels' => [
                                 [
                                     'label' => $label->id,
@@ -1168,7 +1199,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                         ],
                         [
                             'shape' => 'polygon',
-                            'coordinates' => $a5->points,
+                            'coordinates' => [$a5->points],
                             'labels' => [
                                 [
                                     'label' => $label->id,
@@ -1179,7 +1210,7 @@ class ImageIfdoReportGeneratorTest extends TestCase
                         ],
                         [
                             'shape' => 'polyline',
-                            'coordinates' => $a6->points,
+                            'coordinates' => [$a6->points],
                             'labels' => [
                                 [
                                     'label' => $label->id,
@@ -1193,16 +1224,16 @@ class ImageIfdoReportGeneratorTest extends TestCase
             ],
         ];
 
-        $this->assertEquals($expect, $generator->yaml);
+        $this->assertEquals($expect, $generator->ifdo);
     }
 }
 
 class ImageIfdoReportGeneratorStub extends ImageIfdoReportGenerator
 {
-    public $yaml;
+    public $ifdo;
 
-    protected function writeYaml(array $content, string $path)
+    protected function writeIfdo(array $content, string $path)
     {
-        $this->yaml = $content;
+        $this->ifdo = $content;
     }
 }
