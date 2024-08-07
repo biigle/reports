@@ -22,7 +22,7 @@
     "sass": "^1.15.2",
     "sass-loader": "^8.0.0",
     "vue-loader": "^15.9.6",
-    "vue-template-compiler": "^2.6.14"
+    "vue-template-compiler": "^2.7.16"
   },
   "dependencies": {
     "@biigle/ol": "^9.2.4"
