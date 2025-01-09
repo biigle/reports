@@ -1,5 +1,7 @@
 # BIIGLE Reports Module
 
+⚠️ This module has been [merged](https://github.com/biigle/core/pull/1028) into biigle/core.
+
 [![Test status](https://github.com/biigle/reports/workflows/Tests/badge.svg)](https://github.com/biigle/reports/actions?query=workflow%3ATests)
 
 This is the BIIGLE module to generate reports for projects and volumes.
